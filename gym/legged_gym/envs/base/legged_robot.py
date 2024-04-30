@@ -81,6 +81,15 @@ class LeggedRobot(BaseTask):
 
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
+            
+        Returns:
+            obs (torch.Tensor): clipped main observations
+            rewards (torch.Tensor): rewards
+            dones (torch.Tensor): if env has done
+            infos (dict): Extra information is stored in a dictionary.
+                        This includes metrics such as the episode reward, episode length, etc.
+                        Additional information can be stored in the dictionary such as
+                        observations for the critic network, etc.
         """
         clip_actions = self.cfg.normalization.clip_actions
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
@@ -100,7 +109,11 @@ class LeggedRobot(BaseTask):
         self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
-        return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
+        
+        self.compose_observations()
+        self.extras["observations"] = self.obs_dict
+        
+        return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
 
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
@@ -173,19 +186,27 @@ class LeggedRobot(BaseTask):
         self.feet_air_time[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
-        # fill extras
+        
+        # -------------------------------- fill extras ------------------------------- #
         self.extras["episode"] = {}
+        
+        # summarize rew from the terminated episode and reset sums for new episode
         for key in self.episode_sums.keys():
             self.extras["episode"]['rew_' + key] = torch.mean(self.episode_sums[key][env_ids]) / self.max_episode_length_s
             self.episode_sums[key][env_ids] = 0.
+            
         # log additional curriculum info
         if self.cfg.terrain.curriculum:
             self.extras["episode"]["terrain_level"] = torch.mean(self.terrain_levels.float())
         if self.cfg.commands.curriculum:
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
+            
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
+        
+        # observations (e.g., policy, critic, privileged)
+        self.extras["observations"] = {}
     
     def compute_reward(self):
         """ Compute rewards

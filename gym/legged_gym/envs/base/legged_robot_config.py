@@ -203,6 +203,7 @@ class LeggedRobotCfgPPO(BaseConfig):
     seed = 1
     runner_class_name = 'OnPolicyRunner'
     class policy:
+        class_name = 'ActorCritic'
         init_noise_std = 1.0
         actor_hidden_dims = [512, 256, 128]
         critic_hidden_dims = [512, 256, 128]
@@ -213,6 +214,7 @@ class LeggedRobotCfgPPO(BaseConfig):
         # rnn_num_layers = 1
         
     class algorithm:
+        class_name = 'PPO'
         # training params
         value_loss_coef = 1.0
         use_clipped_value_loss = True
@@ -228,10 +230,13 @@ class LeggedRobotCfgPPO(BaseConfig):
         max_grad_norm = 1.
 
     class runner:
-        policy_class_name = 'ActorCritic'
-        algorithm_class_name = 'PPO'
+        # rsl_rl 2.0 reads below two entries from above classes
+        # policy_class_name = 'ActorCritic'
+        # algorithm_class_name = 'PPO'
+        
         num_steps_per_env = 24 # per iteration
         max_iterations = 1500 # number of policy updates
+        empirical_normalization = False
 
         # logging
         save_interval = 50 # check for potential saves every this many iterations

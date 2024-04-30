@@ -67,17 +67,21 @@ class BaseTask():
         torch._C._jit_set_profiling_executor(False)
 
         # allocate buffers
+        
+        # obs bufs
         self.obs_buf = torch.zeros(self.num_envs, self.num_obs, device=self.device, dtype=torch.float)
-        self.rew_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
-        self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
-        self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
-        self.time_out_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         if self.num_privileged_obs is not None:
             self.privileged_obs_buf = torch.zeros(self.num_envs, self.num_privileged_obs, device=self.device, dtype=torch.float)
         else: 
             self.privileged_obs_buf = None
             # self.num_privileged_obs = self.num_obs
+            
+        self.rew_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
+        self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
+        self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self.time_out_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
 
+        self.obs_dict = {}
         self.extras = {}
 
         # create envs, sim and viewer
@@ -98,11 +102,28 @@ class BaseTask():
             self.gym.subscribe_viewer_keyboard_event(
                 self.viewer, gymapi.KEY_V, "toggle_viewer_sync")
 
+    def compute_observations(self):
+        """Update all obs bufs, raw/unclipped"""
+        raise NotImplementedError
+
+    def compose_observations(self):
+        """Fill in obs_dict"""
+        self.obs_dict = {}
+        self.obs_dict["policy"] = self.obs_buf
+        if self.privileged_obs_buf is not None:
+            self.obs_dict["privileged"] = self.privileged_obs_buf
+        else:
+            # make sure priv key is not present
+            self.obs_dict.pop("privileged", None)
+
     def get_observations(self):
-        return self.obs_buf
+        """Update add obs buf to obs_dict"""
+        self.compute_observations()
+        self.compose_observations()
+        return self.obs_buf, {"observations": self.obs_dict}
     
-    def get_privileged_observations(self):
-        return self.privileged_obs_buf
+    # def get_privileged_observations(self):
+    #     return self.privileged_obs_buf
 
     def reset_idx(self, env_ids):
         """Reset selected robots"""
@@ -111,8 +132,8 @@ class BaseTask():
     def reset(self):
         """ Reset all robots"""
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
-        obs, privileged_obs, _, _, _ = self.step(torch.zeros(self.num_envs, self.num_actions, device=self.device, requires_grad=False))
-        return obs, privileged_obs
+        obs, _, _, infos = self.step(torch.zeros(self.num_envs, self.num_actions, device=self.device, requires_grad=False))
+        return obs, infos
 
     def step(self, actions):
         raise NotImplementedError
